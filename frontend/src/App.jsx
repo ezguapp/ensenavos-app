@@ -1,122 +1,244 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { useCallback, useRef, useState } from "react";
+import { classifyHandLandmarks } from "./utils/signClassifier";
+import HandCamera from "./components/HandCamera";
+import {
+  createSession,
+  saveTranslation,
+  saveFeedback,
+} from "./services/api";
+import "./App.css";
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [session, setSession] = useState(null);
+  const [textBuffer, setTextBuffer] = useState("");
+  const [isRunning, setIsRunning] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [message, setMessage] = useState("");
+  const lastPredictionRef = useRef({
+    label: null,
+    time: 0,
+  });
+
+
+  const handleLandmarksDetected = useCallback(
+    async (landmarks) => {
+      const prediction = classifyHandLandmarks(landmarks);
+
+      if (!prediction) {
+        return;
+      }
+
+      if (prediction.confidence < 0.85) {
+        return;
+      }
+
+      const now = Date.now();
+      const lastPrediction = lastPredictionRef.current;
+
+      // Evita que escriba la misma letra 20 veces por segundo
+      if (
+        lastPrediction.label === prediction.label &&
+        now - lastPrediction.time < 1500
+      ) {
+        return;
+      }
+
+      lastPredictionRef.current = {
+        label: prediction.label,
+        time: now,
+      };
+
+      if (!isRunning) {
+        return;
+      }
+
+      setTextBuffer((prev) => prev + prediction.label);
+
+      if (session?.id) {
+        try {
+          await saveTranslation(
+            session.id,
+            prediction.label,
+            prediction.confidence
+          );
+          setMessage(`Se detectó y guardó: ${prediction.label}`);
+        } catch (error) {
+          console.error(error);
+          setMessage(`Se detectó: ${prediction.label}, pero no se guardó`);
+        }
+      } else {
+        setMessage(`Se detectó en modo demo: ${prediction.label}`);
+      }
+    },
+    [isRunning, session]
+  );
+
+  const startConversation = async () => {
+    try {
+      const newSession = await createSession();
+      setSession(newSession);
+      setTextBuffer("");
+      setIsRunning(true);
+      setMessage("Sesión iniciada correctamente con backend");
+    } catch (error) {
+      console.error(error);
+
+      setSession({
+        id: null,
+        demo: true,
+      });
+
+      setTextBuffer("");
+      setIsRunning(true);
+      setMessage("Modo demo activo: cámara y MediaPipe funcionando sin backend");
+    }
+  };
+
+  const pauseConversation = () => {
+    setIsRunning(false);
+    setMessage("Reconocimiento pausado");
+  };
+
+  const resumeConversation = () => {
+    if (!session) {
+      setMessage("Primero debes iniciar una sesión");
+      return;
+    }
+
+    setIsRunning(true);
+    setMessage("Reconocimiento activo");
+  };
+
+  const clearText = () => {
+    setTextBuffer("");
+    setMessage("Texto limpiado");
+  };
+
+  const detectFakeSign = async (detectedText) => {
+    if (!session) {
+      setMessage("Primero debes iniciar una sesión");
+      return;
+    }
+
+    if (!isRunning) {
+      setMessage("El reconocimiento está pausado");
+      return;
+    }
+
+    const confidence = 0.95;
+
+    try {
+      setTextBuffer((prev) => prev + detectedText);
+
+      if (session?.id) {
+        await saveTranslation(session.id, detectedText, confidence);
+        setMessage(`Se detectó y guardó: ${detectedText}`);
+      } else {
+        setMessage(`Se detectó en modo demo: ${detectedText}`);
+      }
+    } catch (error) {
+      setMessage("Se detectó, pero no se pudo guardar en backend");
+      console.error(error);
+    }
+  };
+
+  const finishConversation = () => {
+    if (!session) {
+      setMessage("No hay una sesión activa");
+      return;
+    }
+
+    setIsRunning(false);
+    setShowFeedback(true);
+  };
+
+  const sendFeedback = async (rating) => {
+    try {
+      if (session?.id) {
+        await saveFeedback(session.id, rating);
+        setMessage(`Feedback guardado: ${rating}/5`);
+      } else {
+        setMessage(`Feedback registrado en modo demo: ${rating}/5`);
+      }
+
+      setShowFeedback(false);
+      setSession(null);
+      setIsRunning(false);
+      setTextBuffer("");
+    } catch (error) {
+      console.error(error);
+      setMessage(`Feedback registrado localmente: ${rating}/5`);
+      setShowFeedback(false);
+      setSession(null);
+      setIsRunning(false);
+      setTextBuffer("");
+    }
+  };
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
+    <main className="app-container">
+      <section className="phone-frame">
+        <header className="app-header">
+          <h1>EnseñaVos</h1>
+          <p>Prototipo de reconocimiento de señas</p>
+        </header>
+
+        <section className="camera-box">
+          <HandCamera
+            isRunning={isRunning}
+            onLandmarksDetected={handleLandmarksDetected}
+          />
+        </section>
+
+        <section className="subtitle-box">
+          <p className="label">Texto detectado</p>
+          <div className="detected-text">
+            {textBuffer || "Aquí aparecerá la traducción..."}
+          </div>
+        </section>
+
+        <section className="controls">
+          {!session && <button onClick={startConversation}>Iniciar</button>}
+
+          {session && !isRunning && (
+            <button onClick={resumeConversation}>Continuar</button>
+          )}
+
+          {session && isRunning && (
+            <button onClick={pauseConversation}>Pausar</button>
+          )}
+
+          <button onClick={clearText}>Limpiar</button>
+          <button onClick={finishConversation}>Finalizar</button>
+        </section>
+
+        <section className="fake-signs">
+          <p>Prueba temporal de señas:</p>
+          <button onClick={() => detectFakeSign("A")}>A</button>
+          <button onClick={() => detectFakeSign("B")}>B</button>
+          <button onClick={() => detectFakeSign("C")}>C</button>
+          <button onClick={() => detectFakeSign(" HOLA ")}>HOLA</button>
+        </section>
+
+        {message && <p className="message">{message}</p>}
+
+        {showFeedback && (
+          <section className="feedback-modal">
+            <div className="feedback-card">
+              <h2>¿Qué tan útil fue la aplicación?</h2>
+              <div className="stars">
+                <button onClick={() => sendFeedback(1)}>1</button>
+                <button onClick={() => sendFeedback(2)}>2</button>
+                <button onClick={() => sendFeedback(3)}>3</button>
+                <button onClick={() => sendFeedback(4)}>4</button>
+                <button onClick={() => sendFeedback(5)}>5</button>
+              </div>
+            </div>
+          </section>
+        )}
       </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+    </main>
+  );
 }
 
-export default App
+export default App;
