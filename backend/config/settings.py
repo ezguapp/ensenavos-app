@@ -34,6 +34,7 @@ INSTALLED_APPS = [
     'corsheaders', #Agregado por Mati
     'rest_framework', #Agregado por Mati
     'api', #Agregado por Mati
+    'rest_framework.authtoken', #Agregado por Mati
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',

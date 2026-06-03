@@ -1,11 +1,81 @@
 const API_URL = "http://localhost:8000/api";
 
-export async function createSession() {
-  const response = await fetch(`${API_URL}/sessions/`, {
+export function getToken() {
+  return localStorage.getItem("token");
+}
+
+export function getAuthHeaders() {
+  const token = getToken();
+
+  return {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Token ${token}` } : {}),
+  };
+}
+
+export async function registerUser(username, email, password) {
+  const response = await fetch(`${API_URL}/auth/register/`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
+    body: JSON.stringify({
+      username,
+      email,
+      password,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Error al registrar usuario");
+  }
+
+  const data = await response.json();
+
+  localStorage.setItem("token", data.token);
+  localStorage.setItem("user", JSON.stringify(data.user));
+
+  return data;
+}
+
+export async function loginUser(username, password) {
+  const response = await fetch(`${API_URL}/auth/login/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      username,
+      password,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Credenciales incorrectas");
+  }
+
+  const data = await response.json();
+
+  localStorage.setItem("token", data.token);
+  localStorage.setItem("user", JSON.stringify(data.user));
+
+  return data;
+}
+
+export function logoutUser() {
+  localStorage.removeItem("token");
+  localStorage.removeItem("user");
+}
+
+export function getLocalUser() {
+  const user = localStorage.getItem("user");
+  return user ? JSON.parse(user) : null;
+}
+
+export async function createSession() {
+  const response = await fetch(`${API_URL}/sessions/`, {
+    method: "POST",
+    headers: getAuthHeaders(),
     body: JSON.stringify({
       duration_seconds: 0,
       translations_count: 0,
@@ -22,13 +92,11 @@ export async function createSession() {
 export async function saveTranslation(sessionId, text, confidence = 1) {
   const response = await fetch(`${API_URL}/translations/`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: getAuthHeaders(),
     body: JSON.stringify({
       session: sessionId,
-      text: text,
-      confidence: confidence,
+      text,
+      confidence,
     }),
   });
 
@@ -42,17 +110,63 @@ export async function saveTranslation(sessionId, text, confidence = 1) {
 export async function saveFeedback(sessionId, rating) {
   const response = await fetch(`${API_URL}/feedback/`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: getAuthHeaders(),
     body: JSON.stringify({
       session: sessionId,
-      rating: rating,
+      rating,
     }),
   });
 
   if (!response.ok) {
     throw new Error("Error al guardar el feedback");
+  }
+
+  return await response.json();
+}
+
+export async function getSessions() {
+  const response = await fetch(`${API_URL}/sessions/`, {
+    headers: getAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    throw new Error("Error al obtener historial");
+  }
+
+  return await response.json();
+}
+
+export async function getTranslations() {
+  const response = await fetch(`${API_URL}/translations/`, {
+    headers: getAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    throw new Error("Error al obtener traducciones");
+  }
+
+  return await response.json();
+}
+
+export async function getFeedback() {
+  const response = await fetch(`${API_URL}/feedback/`, {
+    headers: getAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    throw new Error("Error al obtener feedback");
+  }
+
+  return await response.json();
+}
+
+export async function getStats() {
+  const response = await fetch(`${API_URL}/stats/`, {
+    headers: getAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    throw new Error("Error al obtener estadísticas");
   }
 
   return await response.json();

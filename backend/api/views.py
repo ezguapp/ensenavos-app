@@ -1,34 +1,119 @@
-from rest_framework import viewsets
+from django.contrib.auth import authenticate
+from rest_framework import viewsets, status
+from rest_framework.authtoken.models import Token
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.decorators import api_view
+from rest_framework.views import APIView
 
 from .models import Session, Translation, Feedback
-from .serializers import SessionSerializer, TranslationSerializer, FeedbackSerializer
+from .serializers import (
+    RegisterSerializer,
+    UserSerializer,
+    SessionSerializer,
+    TranslationSerializer,
+    FeedbackSerializer,
+)
+
+
+class RegisterView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = RegisterSerializer(data=request.data)
+
+        if serializer.is_valid():
+            user = serializer.save()
+            token, _ = Token.objects.get_or_create(user=user)
+
+            return Response({
+                "user": UserSerializer(user).data,
+                "token": token.key
+            }, status=status.HTTP_201_CREATED)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class LoginView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        username = request.data.get("username")
+        password = request.data.get("password")
+
+        user = authenticate(username=username, password=password)
+
+        if not user:
+            return Response({
+                "error": "Credenciales incorrectas"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        token, _ = Token.objects.get_or_create(user=user)
+
+        return Response({
+            "user": UserSerializer(user).data,
+            "token": token.key
+        })
+
+
+class MeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response(UserSerializer(request.user).data)
+
+
+class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        request.user.auth_token.delete()
+        return Response({"message": "Sesión cerrada correctamente"})
 
 
 class SessionViewSet(viewsets.ModelViewSet):
-    queryset = Session.objects.all().order_by('-started_at')
     serializer_class = SessionSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Session.objects.filter(user=self.request.user).order_by("-started_at")
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
 
 
 class TranslationViewSet(viewsets.ModelViewSet):
-    queryset = Translation.objects.all().order_by('-created_at')
     serializer_class = TranslationSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Translation.objects.filter(
+            session__user=self.request.user
+        ).order_by("-created_at")
 
 
 class FeedbackViewSet(viewsets.ModelViewSet):
-    queryset = Feedback.objects.all().order_by('-created_at')
     serializer_class = FeedbackSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Feedback.objects.filter(
+            session__user=self.request.user
+        ).order_by("-created_at")
 
 
-@api_view(['GET'])
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
 def stats(request):
-    total_sessions = Session.objects.count()
-    total_translations = Translation.objects.count()
-    total_feedbacks = Feedback.objects.count()
+    sessions = Session.objects.filter(user=request.user)
+    translations = Translation.objects.filter(session__user=request.user)
+    feedbacks = Feedback.objects.filter(session__user=request.user)
+
+    total_sessions = sessions.count()
+    total_translations = translations.count()
+    total_feedbacks = feedbacks.count()
 
     average_rating = 0
-    feedbacks = Feedback.objects.all()
 
     if feedbacks.exists():
         average_rating = sum(f.rating for f in feedbacks) / total_feedbacks
