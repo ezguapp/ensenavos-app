@@ -131,3 +131,12 @@ CSRF_TRUSTED_ORIGINS = (
     if os.environ.get("CSRF_TRUSTED_ORIGINS")
     else []
 )
+
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.TokenAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
+}

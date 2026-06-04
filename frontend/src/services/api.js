@@ -56,11 +56,11 @@ export async function loginUser(username, password) {
     }),
   });
 
-  if (!response.ok) {
-    throw new Error("Credenciales incorrectas");
-  }
-
   const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || "Credenciales incorrectas");
+  }
 
   localStorage.setItem("token", data.token);
   localStorage.setItem("user", JSON.stringify(data.user));
@@ -88,11 +88,13 @@ export async function createSession() {
     }),
   });
 
+  const data = await response.json().catch(() => null);
+
   if (!response.ok) {
-    throw new Error("Error al crear la sesión");
+    throw new Error(data?.detail || `Error al crear la sesión (${response.status})`);
   }
 
-  return await response.json();
+  return data;
 }
 
 export async function saveTranslation(sessionId, text, confidence = 1) {
