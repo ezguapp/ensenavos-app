@@ -1,4 +1,4 @@
-const API_URL = "http://localhost:8000/api";
+const API_URL = "/api";
 
 export function getToken() {
   return localStorage.getItem("token");
@@ -26,11 +26,17 @@ export async function registerUser(username, email, password) {
     }),
   });
 
-  if (!response.ok) {
-    throw new Error("Error al registrar usuario");
-  }
-
   const data = await response.json();
+
+  if (!response.ok) {
+    const errorMessage =
+      data.username?.[0] ||
+      data.email?.[0] ||
+      data.password?.[0] ||
+      "Error al registrar usuario";
+
+    throw new Error(errorMessage);
+  }
 
   localStorage.setItem("token", data.token);
   localStorage.setItem("user", JSON.stringify(data.user));
