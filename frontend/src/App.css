@@ -1115,3 +1115,109 @@ button:hover {
     bottom: 14px;
   }
 }
+
+.premium-feedback-card {
+  width: 90%;
+  max-width: 330px;
+  padding: 26px 22px;
+  border-radius: 28px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 250, 243, 0.94));
+  box-shadow:
+    0 28px 70px rgba(15, 23, 42, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+}
+
+.feedback-label {
+  margin: 0 0 8px;
+  color: #c08457;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.premium-feedback-card h2 {
+  margin: 0;
+  color: #1f2937;
+  font-size: 24px;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+}
+
+.feedback-description {
+  margin: 12px 0 18px;
+  color: #6b5f55;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.feedback-session-summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.feedback-session-summary div {
+  background: #f8fafc;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+.feedback-session-summary strong {
+  display: block;
+  color: #2563eb;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.feedback-session-summary span {
+  display: block;
+  margin-top: 5px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.emoji-rating {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+
+.emoji-rating button {
+  border: none;
+  border-radius: 18px;
+  padding: 10px 4px;
+  background: #f3f4f6;
+  color: #1f2937;
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.emoji-rating button:hover {
+  transform: translateY(-2px);
+  background: #dbeafe;
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.18);
+}
+
+.emoji-rating button:active {
+  transform: scale(0.95);
+}
+
+.emoji-rating span {
+  display: block;
+  font-size: 24px;
+  margin-bottom: 4px;
+}
+
+.emoji-rating small {
+  font-size: 12px;
+  font-weight: 800;
+}

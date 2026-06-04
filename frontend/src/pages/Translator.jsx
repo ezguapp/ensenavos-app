@@ -5,6 +5,8 @@ import {
   createSession,
   saveTranslation,
   saveFeedback,
+  updateSession,
+  savePendingFeedbackLocally,
 } from "../services/api";
 import "../App.css";
 
@@ -15,6 +17,10 @@ function Translator() {
   const [showFeedback, setShowFeedback] = useState(false);
   const [message, setMessage] = useState("");
   const [currentSign, setCurrentSign] = useState("Sin seña");
+
+  const [sessionStartedAt, setSessionStartedAt] = useState(null);
+  const [translationsCount, setTranslationsCount] = useState(0);
+  const [finalSessionData, setFinalSessionData] = useState(null);
 
   const lastPredictionRef = useRef({
     label: null,
@@ -58,6 +64,7 @@ function Translator() {
       }
 
       setTextBuffer((prev) => prev + prediction.label);
+      setTranslationsCount((prev) => prev + 1);
 
       if (session?.id) {
         try {
@@ -79,25 +86,29 @@ function Translator() {
   );
 
   const startConversation = async () => {
-    try {
-      const newSession = await createSession();
-      setSession(newSession);
-      setTextBuffer("");
-      setIsRunning(true);
-      setMessage("Sesión iniciada correctamente con backend");
-    } catch (error) {
-      console.error(error);
+  try {
+    const newSession = await createSession();
+    setSession(newSession);
+    setTextBuffer("");
+    setIsRunning(true);
+    setSessionStartedAt(Date.now());
+    setTranslationsCount(0);
+    setMessage("Sesión iniciada correctamente con backend");
+  } catch (error) {
+    console.error(error);
 
-      setSession({
-        id: null,
-        demo: true,
-      });
+    setSession({
+      id: null,
+      demo: true,
+    });
 
-      setTextBuffer("");
-      setIsRunning(true);
-      setMessage("Modo demo activo: cámara y MediaPipe funcionando sin backend");
-    }
-  };
+    setTextBuffer("");
+    setIsRunning(true);
+    setSessionStartedAt(Date.now());
+    setTranslationsCount(0);
+    setMessage("Modo demo activo: cámara y MediaPipe funcionando sin backend");
+  }
+};
 
   const pauseConversation = () => {
     setIsRunning(false);
@@ -134,6 +145,7 @@ function Translator() {
 
     try {
       setTextBuffer((prev) => prev + detectedText);
+      setTranslationsCount((prev) => prev + 1);
 
       if (session?.id) {
         await saveTranslation(session.id, detectedText, confidence);
@@ -153,32 +165,68 @@ function Translator() {
       return;
     }
 
+    const durationSeconds = sessionStartedAt
+      ? Math.round((Date.now() - sessionStartedAt) / 1000)
+      : 0;
+
+    const data = {
+      duration_seconds: durationSeconds,
+      translations_count: translationsCount,
+    };
+
+    setFinalSessionData(data);
     setIsRunning(false);
     setShowFeedback(true);
   };
 
-  const sendFeedback = async (rating) => {
-    try {
-      if (session?.id) {
-        await saveFeedback(session.id, rating);
-        setMessage(`Feedback guardado: ${rating}/5`);
-      } else {
-        setMessage(`Feedback registrado en modo demo: ${rating}/5`);
-      }
-
-      setShowFeedback(false);
-      setSession(null);
-      setIsRunning(false);
-      setTextBuffer("");
-    } catch (error) {
-      console.error(error);
-      setMessage(`Feedback registrado localmente: ${rating}/5`);
-      setShowFeedback(false);
-      setSession(null);
-      setIsRunning(false);
-      setTextBuffer("");
-    }
+const sendFeedback = async (rating) => {
+  const dataToSave = {
+    rating,
+    duration_seconds: finalSessionData?.duration_seconds || 0,
+    translations_count: finalSessionData?.translations_count || translationsCount,
   };
+
+  try {
+    if (session?.id) {
+      await updateSession(session.id, {
+        duration_seconds: dataToSave.duration_seconds,
+        translations_count: dataToSave.translations_count,
+      });
+
+      await saveFeedback(session.id, rating);
+
+      setMessage(`Feedback guardado: ${rating}/5`);
+    } else {
+      setMessage(`Feedback registrado en modo demo: ${rating}/5`);
+    }
+
+    setShowFeedback(false);
+    setSession(null);
+    setIsRunning(false);
+    setTextBuffer("");
+    setTranslationsCount(0);
+    setSessionStartedAt(null);
+    setFinalSessionData(null);
+  } catch (error) {
+    console.error(error);
+
+    savePendingFeedbackLocally({
+      sessionId: session?.id || null,
+      rating,
+      duration_seconds: dataToSave.duration_seconds,
+      translations_count: dataToSave.translations_count,
+    });
+
+    setMessage("Sin conexión: feedback guardado temporalmente");
+    setShowFeedback(false);
+    setSession(null);
+    setIsRunning(false);
+    setTextBuffer("");
+    setTranslationsCount(0);
+    setSessionStartedAt(null);
+    setFinalSessionData(null);
+  }
+};
 
   return (
     <main className="app-container">
@@ -231,14 +279,52 @@ function Translator() {
 
         {showFeedback && (
           <section className="feedback-modal">
-            <div className="feedback-card">
+            <div className="feedback-card premium-feedback-card">
+              <p className="feedback-label">Fin de la conversación</p>
+
               <h2>¿Qué tan útil fue la aplicación?</h2>
-              <div className="stars">
-                <button onClick={() => sendFeedback(1)}>1</button>
-                <button onClick={() => sendFeedback(2)}>2</button>
-                <button onClick={() => sendFeedback(3)}>3</button>
-                <button onClick={() => sendFeedback(4)}>4</button>
-                <button onClick={() => sendFeedback(5)}>5</button>
+
+              <p className="feedback-description">
+                Tu evaluación ayuda a mejorar el reconocimiento de señas y la experiencia de comunicación.
+              </p>
+
+              <div className="feedback-session-summary">
+                <div>
+                  <strong>{finalSessionData?.duration_seconds || 0}s</strong>
+                  <span>Duración</span>
+                </div>
+
+                <div>
+                  <strong>{finalSessionData?.translations_count || translationsCount}</strong>
+                  <span>Traducciones</span>
+                </div>
+              </div>
+
+              <div className="emoji-rating">
+                <button onClick={() => sendFeedback(1)}>
+                  <span>😞</span>
+                  <small>1</small>
+                </button>
+
+                <button onClick={() => sendFeedback(2)}>
+                  <span>😕</span>
+                  <small>2</small>
+                </button>
+
+                <button onClick={() => sendFeedback(3)}>
+                  <span>😐</span>
+                  <small>3</small>
+                </button>
+
+                <button onClick={() => sendFeedback(4)}>
+                  <span>🙂</span>
+                  <small>4</small>
+                </button>
+
+                <button onClick={() => sendFeedback(5)}>
+                  <span>😍</span>
+                  <small>5</small>
+                </button>
               </div>
             </div>
           </section>

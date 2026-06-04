@@ -177,3 +177,55 @@ export async function getStats() {
 
   return await response.json();
 }
+
+export async function updateSession(sessionId, data) {
+  const response = await fetch(`${API_URL}/sessions/${sessionId}/`, {
+    method: "PATCH",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    throw new Error("Error al actualizar la sesión");
+  }
+
+  return await response.json();
+}
+
+export function savePendingFeedbackLocally(feedbackData) {
+  const pending = JSON.parse(localStorage.getItem("pendingFeedbacks") || "[]");
+
+  pending.push({
+    ...feedbackData,
+    saved_at: new Date().toISOString(),
+  });
+
+  localStorage.setItem("pendingFeedbacks", JSON.stringify(pending));
+}
+
+export async function syncPendingFeedbacks() {
+  const pending = JSON.parse(localStorage.getItem("pendingFeedbacks") || "[]");
+
+  if (pending.length === 0) {
+    return;
+  }
+
+  const remaining = [];
+
+  for (const item of pending) {
+    try {
+      if (item.sessionId) {
+        await updateSession(item.sessionId, {
+          duration_seconds: item.duration_seconds,
+          translations_count: item.translations_count,
+        });
+
+        await saveFeedback(item.sessionId, item.rating);
+      }
+    } catch (error) {
+      remaining.push(item);
+    }
+  }
+
+  localStorage.setItem("pendingFeedbacks", JSON.stringify(remaining));
+}
