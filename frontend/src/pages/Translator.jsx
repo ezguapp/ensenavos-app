@@ -1,6 +1,5 @@
 import { useCallback, useRef, useState } from "react";
 import HandCamera from "../components/HandCamera";
-// import { classifyHandLandmarks } from "../utils/signClassifier";
 
 import {
   createSession,
@@ -23,144 +22,237 @@ function Translator() {
   const [translationsCount, setTranslationsCount] = useState(0);
   const [finalSessionData, setFinalSessionData] = useState(null);
 
-const lastPredictionRef = useRef({
-  label: null,
-  time: 0,
-});
+  const isPredictingRef = useRef(false);
+  const lastRequestTimeRef = useRef(0);
 
-const isPredictingRef = useRef(false);
-const lastRequestTimeRef = useRef(0);
+  const candidateSignRef = useRef({
+    label: null,
+    count: 0,
+  });
 
-const stableSignRef = useRef({
-  label: null,
-  count: 0,
-});
+  const lastAcceptedSignRef = useRef({
+    label: null,
+    time: 0,
+  });
 
-const lastWrittenRef = useRef({
-  label: null,
-  time: 0,
-});
+  const lastWrittenByLabelRef = useRef({});
 
-const formatDetectedText = (label) => {
-  const cleanLabel = label.trim();
+  const normalizeLabel = (label) => {
+    const normalized = String(label || "")
+      .trim()
+      .replaceAll("_", " ")
+      .replaceAll("-", " ")
+      .replace(/\s+/g, " ")
+      .toUpperCase();
 
-  // Si es palabra o frase, agrega espacios.
-  if (cleanLabel.length > 1) {
-    return ` ${cleanLabel} `;
-  }
+    if (normalized === "TEQUIERO") return "TE QUIERO";
+    if (normalized === "TE QUIERO") return "TE QUIERO";
+    if (normalized === "TE  QUIERO") return "TE QUIERO";
 
-  // Si es una letra, la agrega normal.
-  return cleanLabel;
-};
+    return normalized;
+  };
 
-const handleLandmarksDetected = useCallback(
-  async (landmarks) => {
-    if (!landmarks || landmarks.length < 21) {
-      setCurrentSign("Sin seña");
-      return;
+  const getSignRule = (label) => {
+    const normalized = normalizeLabel(label);
+
+    const rules = {
+      "TE QUIERO": {
+        minConfidence: 0.82,
+        requiredStableCount: 4,
+        cooldownMs: 999999,
+        preventRepeatUntilChange: true,
+        type: "phrase",
+      },
+
+      U: {
+        minConfidence: 0.42,
+        requiredStableCount: 2,
+        cooldownMs: 2600,
+        preventRepeatUntilChange: false,
+        type: "letter",
+      },
+
+      A: {
+        minConfidence: 0.35,
+        requiredStableCount: 2,
+        cooldownMs: 2300,
+        preventRepeatUntilChange: false,
+        type: "letter",
+      },
+
+      L: {
+        minConfidence: 0.35,
+        requiredStableCount: 2,
+        cooldownMs: 2300,
+        preventRepeatUntilChange: false,
+        type: "letter",
+      },
+    };
+
+    return (
+      rules[normalized] || {
+        minConfidence: normalized.length > 1 ? 0.7 : 0.4,
+        requiredStableCount: normalized.length > 1 ? 4 : 2,
+        cooldownMs: normalized.length > 1 ? 8000 : 2400,
+        preventRepeatUntilChange: normalized.length > 1,
+        type: normalized.length > 1 ? "phrase" : "letter",
+      }
+    );
+  };
+
+  const formatDetectedText = (label) => {
+    const cleanLabel = normalizeLabel(label);
+
+    if (cleanLabel.length > 1) {
+      return ` ${cleanLabel} `;
     }
 
-    if (!isRunning) {
-      setCurrentSign("Mano detectada");
-      return;
-    }
+    return cleanLabel;
+  };
 
-    const now = Date.now();
+  const appendDetectedText = (label) => {
+    const cleanLabel = normalizeLabel(label);
+    const textToAdd = formatDetectedText(cleanLabel);
 
-    // No mandar demasiadas solicitudes al backend.
-    // Antes estaba muy rápido. Esto baja la carga y reduce lag.
-    if (isPredictingRef.current || now - lastRequestTimeRef.current < 1200) {
-      return;
-    }
+    setTextBuffer((prev) => {
+      const normalizedPrev = prev.replace(/\s+/g, " ").trimEnd();
 
-    isPredictingRef.current = true;
-    lastRequestTimeRef.current = now;
+      if (cleanLabel.length > 1) {
+        const phraseRegex = new RegExp(`(?:^|\\s)${cleanLabel}$`, "i");
 
-    try {
-      const prediction = await predictSign(landmarks);
+        if (phraseRegex.test(normalizedPrev)) {
+          return prev;
+        }
+      }
 
-      if (!prediction || !prediction.label) {
-        setCurrentSign("Sin clasificar");
+      let newText = prev + textToAdd;
+
+      newText = newText.replace(/\s+/g, " ");
+
+      if (newText.length > 140) {
+        return newText.slice(-140).trimStart();
+      }
+
+      return newText;
+    });
+  };
+
+  const resetRecognitionMemory = () => {
+    candidateSignRef.current = {
+      label: null,
+      count: 0,
+    };
+
+    lastAcceptedSignRef.current = {
+      label: null,
+      time: 0,
+    };
+
+    lastWrittenByLabelRef.current = {};
+    lastRequestTimeRef.current = 0;
+    isPredictingRef.current = false;
+  };
+
+  const handleLandmarksDetected = useCallback(
+    async (landmarks) => {
+      if (!landmarks || landmarks.length < 21) {
+        setCurrentSign("Sin seña");
         return;
       }
 
-      const label = prediction.label.trim();
-      const confidence = prediction.confidence ?? 0;
-
-      setCurrentSign(`${label} · ${Math.round(confidence * 100)}%`);
-
-      // Baja o sube este valor según qué tan estricto quieras el modelo.
-      if (confidence < 0.30) {
+      if (!isRunning) {
+        setCurrentSign("Mano detectada");
         return;
       }
 
-      // La seña debe repetirse varias veces antes de escribirse.
-      if (stableSignRef.current.label === label) {
-        stableSignRef.current.count += 1;
-      } else {
-        stableSignRef.current = {
+      const now = Date.now();
+
+      if (isPredictingRef.current || now - lastRequestTimeRef.current < 900) {
+        return;
+      }
+
+      isPredictingRef.current = true;
+      lastRequestTimeRef.current = now;
+
+      try {
+        const prediction = await predictSign(landmarks);
+
+        if (!prediction || !prediction.label) {
+          setCurrentSign("Sin clasificar");
+          return;
+        }
+
+        const label = normalizeLabel(prediction.label);
+        const confidence = prediction.confidence ?? 0;
+        const rule = getSignRule(label);
+
+        setCurrentSign(`${label} · ${Math.round(confidence * 100)}%`);
+
+        if (confidence < rule.minConfidence) {
+          return;
+        }
+
+        if (candidateSignRef.current.label === label) {
+          candidateSignRef.current.count += 1;
+        } else {
+          candidateSignRef.current = {
+            label,
+            count: 1,
+          };
+        }
+
+        setCurrentSign(
+          `${label} · ${Math.round(confidence * 100)}% · confirmando ${candidateSignRef.current.count}/${rule.requiredStableCount}`
+        );
+
+        if (candidateSignRef.current.count < rule.requiredStableCount) {
+          return;
+        }
+
+        const lastAccepted = lastAcceptedSignRef.current;
+
+        if (rule.preventRepeatUntilChange && lastAccepted.label === label) {
+          setCurrentSign(`${label} ya fue escrito. Cambia de seña para repetir.`);
+          return;
+        }
+
+        const lastWrittenTime = lastWrittenByLabelRef.current[label] || 0;
+
+        if (now - lastWrittenTime < rule.cooldownMs) {
+          return;
+        }
+
+        lastAcceptedSignRef.current = {
           label,
-          count: 1,
+          time: now,
         };
-      }
 
-      // Necesita 2 predicciones iguales seguidas para aceptarla.
-      // Si quieres más seguridad, cambia 2 por 3.
-      if (stableSignRef.current.count < 3) {
-        return;
-      }
+        lastWrittenByLabelRef.current[label] = now;
 
-      const lastWritten = lastWrittenRef.current;
+        appendDetectedText(label);
+        setTranslationsCount((prev) => prev + 1);
 
-      // Evita repetir la misma seña durante 3 segundos.
-      if (
-        lastWritten.label === label &&
-        now - lastWritten.time < 2000
-      ) {
-        return;
-      }
-
-      lastWrittenRef.current = {
-        label,
-        time: now,
-      };
-
-      const textToAdd = formatDetectedText(label);
-
-      setTextBuffer((prev) => {
-        const newText = prev + textToAdd;
-
-        // Evita que la pantalla se llene infinito.
-        if (newText.length > 120) {
-          return newText.slice(-120);
+        if (session?.id) {
+          try {
+            await saveTranslation(session.id, label, confidence);
+            setMessage(`Se detectó y guardó: ${label}`);
+          } catch (error) {
+            console.error(error);
+            setMessage(`Se detectó: ${label}, pero no se guardó`);
+          }
+        } else {
+          setMessage(`Se detectó en modo demo: ${label}`);
         }
-
-        return newText;
-      });
-
-      setTranslationsCount((prev) => prev + 1);
-
-      if (session?.id) {
-        try {
-          await saveTranslation(session.id, label, confidence);
-          setMessage(`Se detectó y guardó: ${label}`);
-        } catch (error) {
-          console.error(error);
-          setMessage(`Se detectó: ${label}, pero no se guardó`);
-        }
-      } else {
-        setMessage(`Se detectó en modo demo: ${label}`);
+      } catch (error) {
+        console.error("Error usando modelo IA:", error);
+        setCurrentSign("Error en modelo IA");
+        setMessage(error.message);
+      } finally {
+        isPredictingRef.current = false;
       }
-    } catch (error) {
-      console.error("Error usando modelo IA:", error);
-      setCurrentSign("Error en modelo IA");
-      setMessage(error.message);
-    } finally {
-      isPredictingRef.current = false;
-    }
-  },
-  [isRunning, session]
-);
+    },
+    [isRunning, session]
+  );
 
   const startConversation = async () => {
     if (session && isRunning) {
@@ -176,11 +268,13 @@ const handleLandmarksDetected = useCallback(
 
     try {
       const newSession = await createSession();
+
       setSession(newSession);
       setTextBuffer("");
       setIsRunning(true);
       setSessionStartedAt(Date.now());
       setTranslationsCount(0);
+      resetRecognitionMemory();
       setMessage("Sesión iniciada correctamente con backend");
     } catch (error) {
       console.error(error);
@@ -194,6 +288,7 @@ const handleLandmarksDetected = useCallback(
       setIsRunning(true);
       setSessionStartedAt(Date.now());
       setTranslationsCount(0);
+      resetRecognitionMemory();
       setMessage("Modo demo activo: cámara y MediaPipe funcionando sin backend");
     }
   };
@@ -201,36 +296,9 @@ const handleLandmarksDetected = useCallback(
   const clearText = () => {
     setTextBuffer("");
     setTranslationsCount(0);
+    resetRecognitionMemory();
+    setCurrentSign("Sin seña");
     setMessage("Texto limpiado");
-  };
-
-  const detectFakeSign = async (detectedText) => {
-    if (!session) {
-      setMessage("Primero debes iniciar una sesión");
-      return;
-    }
-
-    if (!isRunning) {
-      setMessage("El reconocimiento está pausado");
-      return;
-    }
-
-    const confidence = 0.95;
-
-    try {
-      setTextBuffer((prev) => prev + detectedText);
-      setTranslationsCount((prev) => prev + 1);
-
-      if (session?.id) {
-        await saveTranslation(session.id, detectedText, confidence);
-        setMessage(`Se detectó y guardó: ${detectedText}`);
-      } else {
-        setMessage(`Se detectó en modo demo: ${detectedText}`);
-      }
-    } catch (error) {
-      setMessage("Se detectó, pero no se pudo guardar en backend");
-      console.error(error);
-    }
   };
 
   const finishConversation = () => {
@@ -282,6 +350,7 @@ const handleLandmarksDetected = useCallback(
       setSessionStartedAt(null);
       setFinalSessionData(null);
       setCurrentSign("Sin seña");
+      resetRecognitionMemory();
     } catch (error) {
       console.error(error);
 
@@ -301,6 +370,7 @@ const handleLandmarksDetected = useCallback(
       setSessionStartedAt(null);
       setFinalSessionData(null);
       setCurrentSign("Sin seña");
+      resetRecognitionMemory();
     }
   };
 
@@ -369,19 +439,6 @@ const handleLandmarksDetected = useCallback(
           </button>
         </section>
 
-        {/* 
-        BOTONES TEMPORALES DE PRUEBA.
-        Los dejo comentados para no perderlos, pero ya no se muestran en la interfaz.
-
-        <section className="fake-signs">
-          <p>Prueba temporal de señas:</p>
-          <button onClick={() => detectFakeSign("A")}>A</button>
-          <button onClick={() => detectFakeSign("B")}>B</button>
-          <button onClick={() => detectFakeSign("C")}>C</button>
-          <button onClick={() => detectFakeSign(" HOLA ")}>HOLA</button>
-        </section>
-        */}
-
         {message && <p style={styles.message}>{message}</p>}
 
         {showFeedback && (
@@ -412,27 +469,42 @@ const handleLandmarksDetected = useCallback(
               </div>
 
               <div style={styles.emojiGrid}>
-                <button style={styles.emojiButton} onClick={() => sendFeedback(1)}>
+                <button
+                  style={styles.emojiButton}
+                  onClick={() => sendFeedback(1)}
+                >
                   <span>😞</span>
                   <small>1</small>
                 </button>
 
-                <button style={styles.emojiButton} onClick={() => sendFeedback(2)}>
+                <button
+                  style={styles.emojiButton}
+                  onClick={() => sendFeedback(2)}
+                >
                   <span>😕</span>
                   <small>2</small>
                 </button>
 
-                <button style={styles.emojiButton} onClick={() => sendFeedback(3)}>
+                <button
+                  style={styles.emojiButton}
+                  onClick={() => sendFeedback(3)}
+                >
                   <span>😐</span>
                   <small>3</small>
                 </button>
 
-                <button style={styles.emojiButton} onClick={() => sendFeedback(4)}>
+                <button
+                  style={styles.emojiButton}
+                  onClick={() => sendFeedback(4)}
+                >
                   <span>🙂</span>
                   <small>4</small>
                 </button>
 
-                <button style={styles.emojiButton} onClick={() => sendFeedback(5)}>
+                <button
+                  style={styles.emojiButton}
+                  onClick={() => sendFeedback(5)}
+                >
                   <span>😍</span>
                   <small>5</small>
                 </button>
