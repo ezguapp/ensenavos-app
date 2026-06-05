@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import HandCamera from "../components/HandCamera";
 
 import {
@@ -10,6 +10,10 @@ import {
   predictSign,
 } from "../services/api";
 
+const MIN_CONFIDENCE = 0.85;
+const PREDICTION_INTERVAL_MS = 650;
+const PREDICTION_WINDOW_SIZE = 4;
+
 function Translator() {
   const [session, setSession] = useState(null);
   const [textBuffer, setTextBuffer] = useState("");
@@ -19,6 +23,7 @@ function Translator() {
   const [currentSign, setCurrentSign] = useState("Sin seña");
 
   const [sessionStartedAt, setSessionStartedAt] = useState(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [translationsCount, setTranslationsCount] = useState(0);
   const [finalSessionData, setFinalSessionData] = useState(null);
 
@@ -36,8 +41,21 @@ function Translator() {
   });
 
   const lastWrittenByLabelRef = useRef({});
+  const predictionWindowRef = useRef([]);
 
-  const normalizeLabel = (label) => {
+  useEffect(() => {
+    if (!sessionStartedAt || !isRunning) {
+      return undefined;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setElapsedSeconds(Math.round((Date.now() - sessionStartedAt) / 1000));
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [isRunning, sessionStartedAt]);
+
+  const normalizeLabel = useCallback((label) => {
     const normalized = String(label || "")
       .trim()
       .replaceAll("_", " ")
@@ -50,39 +68,39 @@ function Translator() {
     if (normalized === "TE  QUIERO") return "TE QUIERO";
 
     return normalized;
-  };
+  }, []);
 
-  const getSignRule = (label) => {
+  const getSignRule = useCallback((label) => {
     const normalized = normalizeLabel(label);
 
     const rules = {
       "TE QUIERO": {
-        minConfidence: 0.82,
-        requiredStableCount: 4,
+        minConfidence: MIN_CONFIDENCE,
+        requiredStableCount: 3,
         cooldownMs: 999999,
         preventRepeatUntilChange: true,
         type: "phrase",
       },
 
       U: {
-        minConfidence: 0.42,
-        requiredStableCount: 2,
+        minConfidence: MIN_CONFIDENCE,
+        requiredStableCount: 3,
         cooldownMs: 2600,
         preventRepeatUntilChange: false,
         type: "letter",
       },
 
       A: {
-        minConfidence: 0.35,
-        requiredStableCount: 2,
+        minConfidence: MIN_CONFIDENCE,
+        requiredStableCount: 3,
         cooldownMs: 2300,
         preventRepeatUntilChange: false,
         type: "letter",
       },
 
       L: {
-        minConfidence: 0.35,
-        requiredStableCount: 2,
+        minConfidence: MIN_CONFIDENCE,
+        requiredStableCount: 3,
         cooldownMs: 2300,
         preventRepeatUntilChange: false,
         type: "letter",
@@ -91,16 +109,16 @@ function Translator() {
 
     return (
       rules[normalized] || {
-        minConfidence: normalized.length > 1 ? 0.7 : 0.4,
-        requiredStableCount: normalized.length > 1 ? 4 : 2,
+        minConfidence: MIN_CONFIDENCE,
+        requiredStableCount: normalized.length > 1 ? 3 : 3,
         cooldownMs: normalized.length > 1 ? 8000 : 2400,
         preventRepeatUntilChange: normalized.length > 1,
         type: normalized.length > 1 ? "phrase" : "letter",
       }
     );
-  };
+  }, [normalizeLabel]);
 
-  const formatDetectedText = (label) => {
+  const formatDetectedText = useCallback((label) => {
     const cleanLabel = normalizeLabel(label);
 
     if (cleanLabel.length > 1) {
@@ -108,9 +126,9 @@ function Translator() {
     }
 
     return cleanLabel;
-  };
+  }, [normalizeLabel]);
 
-  const appendDetectedText = (label) => {
+  const appendDetectedText = useCallback((label) => {
     const cleanLabel = normalizeLabel(label);
     const textToAdd = formatDetectedText(cleanLabel);
 
@@ -135,7 +153,7 @@ function Translator() {
 
       return newText;
     });
-  };
+  }, [formatDetectedText, normalizeLabel]);
 
   const resetRecognitionMemory = () => {
     candidateSignRef.current = {
@@ -149,6 +167,7 @@ function Translator() {
     };
 
     lastWrittenByLabelRef.current = {};
+    predictionWindowRef.current = [];
     lastRequestTimeRef.current = 0;
     isPredictingRef.current = false;
   };
@@ -167,7 +186,10 @@ function Translator() {
 
       const now = Date.now();
 
-      if (isPredictingRef.current || now - lastRequestTimeRef.current < 900) {
+      if (
+        isPredictingRef.current ||
+        now - lastRequestTimeRef.current < PREDICTION_INTERVAL_MS
+      ) {
         return;
       }
 
@@ -189,23 +211,40 @@ function Translator() {
         setCurrentSign(`${label} · ${Math.round(confidence * 100)}%`);
 
         if (confidence < rule.minConfidence) {
+          setCurrentSign(
+            `${label} · ${Math.round(confidence * 100)}% · bajo 85%`
+          );
           return;
         }
 
-        if (candidateSignRef.current.label === label) {
-          candidateSignRef.current.count += 1;
-        } else {
-          candidateSignRef.current = {
-            label,
-            count: 1,
-          };
-        }
+        predictionWindowRef.current = [
+          ...predictionWindowRef.current,
+          { label, confidence },
+        ].slice(-PREDICTION_WINDOW_SIZE);
+
+        const matchingPredictions = predictionWindowRef.current.filter(
+          (item) => item.label === label
+        );
+        const stableCount = matchingPredictions.length;
+        const averageConfidence =
+          matchingPredictions.reduce((total, item) => total + item.confidence, 0) /
+          stableCount;
+
+        candidateSignRef.current = {
+          label,
+          count: stableCount,
+        };
 
         setCurrentSign(
-          `${label} · ${Math.round(confidence * 100)}% · confirmando ${candidateSignRef.current.count}/${rule.requiredStableCount}`
+          `${label} · ${Math.round(
+            averageConfidence * 100
+          )}% · confirmando ${stableCount}/${rule.requiredStableCount}`
         );
 
-        if (candidateSignRef.current.count < rule.requiredStableCount) {
+        if (
+          stableCount < rule.requiredStableCount ||
+          averageConfidence < rule.minConfidence
+        ) {
           return;
         }
 
@@ -251,7 +290,7 @@ function Translator() {
         isPredictingRef.current = false;
       }
     },
-    [isRunning, session]
+    [appendDetectedText, getSignRule, isRunning, normalizeLabel, session]
   );
 
   const startConversation = async () => {
@@ -273,29 +312,26 @@ function Translator() {
       setTextBuffer("");
       setIsRunning(true);
       setSessionStartedAt(Date.now());
+      setElapsedSeconds(0);
       setTranslationsCount(0);
       resetRecognitionMemory();
-      setMessage("Sesión iniciada correctamente con backend");
+      setMessage("Sesión iniciada correctamente");
     } catch (error) {
       console.error(error);
 
-      setSession({
-        id: null,
-        demo: true,
-      });
-
-      setTextBuffer("");
-      setIsRunning(true);
-      setSessionStartedAt(Date.now());
-      setTranslationsCount(0);
-      resetRecognitionMemory();
-      setMessage("Modo demo activo: cámara y MediaPipe funcionando sin backend");
+      setMessage("No se pudo iniciar sesión con el servidor");
     }
+  };
+
+  const pauseConversation = () => {
+    setIsRunning(false);
+    setMessage("Reconocimiento pausado");
   };
 
   const clearText = () => {
     setTextBuffer("");
     setTranslationsCount(0);
+    setElapsedSeconds(0);
     resetRecognitionMemory();
     setCurrentSign("Sin seña");
     setMessage("Texto limpiado");
@@ -348,6 +384,7 @@ function Translator() {
       setTextBuffer("");
       setTranslationsCount(0);
       setSessionStartedAt(null);
+      setElapsedSeconds(0);
       setFinalSessionData(null);
       setCurrentSign("Sin seña");
       resetRecognitionMemory();
@@ -368,6 +405,7 @@ function Translator() {
       setTextBuffer("");
       setTranslationsCount(0);
       setSessionStartedAt(null);
+      setElapsedSeconds(0);
       setFinalSessionData(null);
       setCurrentSign("Sin seña");
       resetRecognitionMemory();
@@ -416,9 +454,7 @@ function Translator() {
 
           <div style={styles.infoCard}>
             <strong>
-              {sessionStartedAt
-                ? Math.round((Date.now() - sessionStartedAt) / 1000)
-                : 0}
+              {elapsedSeconds}
               s
             </strong>
             <span>Sesión</span>
@@ -426,8 +462,11 @@ function Translator() {
         </section>
 
         <section style={styles.controls}>
-          <button style={styles.primaryButton} onClick={startConversation}>
-            {session && isRunning ? "Iniciado" : "Iniciar"}
+          <button
+            style={styles.primaryButton}
+            onClick={session && isRunning ? pauseConversation : startConversation}
+          >
+            {session ? (isRunning ? "Pausar" : "Reanudar") : "Iniciar"}
           </button>
 
           <button style={styles.secondaryButton} onClick={clearText}>
@@ -719,7 +758,6 @@ const styles = {
 
   secondaryButton: {
     height: "52px",
-    border: "none",
     borderRadius: "19px",
     color: "#1f2937",
     cursor: "pointer",

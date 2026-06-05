@@ -10,6 +10,18 @@ for _i in range(21):
     COLUMNAS.extend([f"x{_i}", f"y{_i}", f"z{_i}"])
 
 
+def normalize_landmarks(flat_landmarks):
+    """Normaliza la forma de la mano para depender menos de tamaño/encuadre."""
+    points = np.array(flat_landmarks, dtype=np.float32).reshape(21, 3)
+    points = points - points[0]
+    scale = np.max(np.linalg.norm(points, axis=1))
+
+    if scale > 0:
+        points = points / scale
+
+    return points.reshape(-1).tolist()
+
+
 def get_model():
     """Carga el modelo .pkl una sola vez y lo guarda en memoria."""
     global _model
@@ -31,7 +43,8 @@ def predict_landmarks(flat_landmarks):
     Devuelve dict: { 'label': 'A', 'confidence': 0.97 }
     """
     model = get_model()
-    X = pd.DataFrame([flat_landmarks], columns=COLUMNAS)
+    normalized_landmarks = normalize_landmarks(flat_landmarks)
+    X = pd.DataFrame([normalized_landmarks], columns=COLUMNAS)
 
     label = model.predict(X)[0]
 

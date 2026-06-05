@@ -11,8 +11,18 @@ function HandCamera({ isRunning, onLandmarksDetected }) {
   const landmarkerRef = useRef(null);
   const animationRef = useRef(null);
   const lastVideoTimeRef = useRef(-1);
+  const isRunningRef = useRef(isRunning);
+  const onLandmarksDetectedRef = useRef(onLandmarksDetected);
 
   const [status, setStatus] = useState("Preparando cámara...");
+
+  useEffect(() => {
+    isRunningRef.current = isRunning;
+  }, [isRunning]);
+
+  useEffect(() => {
+    onLandmarksDetectedRef.current = onLandmarksDetected;
+  }, [onLandmarksDetected]);
 
   useEffect(() => {
     let stream = null;
@@ -93,9 +103,7 @@ function HandCamera({ isRunning, onLandmarksDetected }) {
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Para probar, detectamos siempre.
-        // Después podemos volver a usar solo isRunning.
-        const shouldDetect = true;
+        const shouldDetect = isRunningRef.current;
 
         if (shouldDetect) {
           const nowInMs = performance.now();
@@ -124,7 +132,7 @@ function HandCamera({ isRunning, onLandmarksDetected }) {
                   radius: 4,
                 });
 
-                onLandmarksDetected?.(landmarks);
+                onLandmarksDetectedRef.current?.(landmarks);
               }
 
               setStatus("Mano detectada");
@@ -153,7 +161,7 @@ function HandCamera({ isRunning, onLandmarksDetected }) {
         stream.getTracks().forEach((track) => track.stop());
       }
     };
-  }, [onLandmarksDetected]);
+  }, []);
 
   return (
     <div className="hand-camera">
@@ -168,7 +176,7 @@ function HandCamera({ isRunning, onLandmarksDetected }) {
       <canvas ref={canvasRef} className="camera-canvas" />
 
       <div className="camera-status">
-        {isRunning ? status : `${status} | Demo visual activa`}
+        {isRunning ? status : `${status} | Reconocimiento pausado`}
       </div>
     </div>
   );

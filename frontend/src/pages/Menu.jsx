@@ -93,7 +93,7 @@ function Menu() {
             <span className="retro-status-dot amber"></span>
             <div>
               <h4>Base de datos</h4>
-              <p>Sesiones y feedback en SQLite</p>
+              <p>Sesiones y feedback guardados en Django</p>
             </div>
           </div>
         </section>

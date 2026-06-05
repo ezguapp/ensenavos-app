@@ -13,6 +13,15 @@ export function getAuthHeaders() {
   };
 }
 
+async function readJsonResponse(response, fallbackMessage) {
+  const contentType = response.headers.get("content-type") || "";
+  const data = contentType.includes("application/json")
+    ? await response.json()
+    : { detail: fallbackMessage };
+
+  return data;
+}
+
 export async function registerUser(username, email, password) {
   const response = await fetch(`${API_URL}/auth/register/`, {
     method: "POST",
@@ -26,10 +35,10 @@ export async function registerUser(username, email, password) {
     }),
   });
 
-  const contentType = response.headers.get("content-type") || "";
-  const data = contentType.includes("application/json")
-    ? await response.json()
-    : { detail: `Error del servidor (${response.status})` };
+  const data = await readJsonResponse(
+    response,
+    `Error del servidor (${response.status})`
+  );
 
   if (!response.ok) {
     const errorMessage =
@@ -59,10 +68,10 @@ export async function loginUser(username, password) {
     }),
   });
 
-  const contentType = response.headers.get("content-type") || "";
-  const data = contentType.includes("application/json")
-    ? await response.json()
-    : { detail: `Error del servidor (${response.status})` };
+  const data = await readJsonResponse(
+    response,
+    `Error del servidor (${response.status})`
+  );
 
   if (!response.ok) {
     throw new Error(data.error || "Credenciales incorrectas");
@@ -214,7 +223,7 @@ export function savePendingFeedbackLocally(feedbackData) {
 export async function syncPendingFeedbacks() {
   const pending = JSON.parse(localStorage.getItem("pendingFeedbacks") || "[]");
 
-  if (pending.length === 0) {
+  if (pending.length === 0 || !getToken()) {
     return;
   }
 
@@ -230,7 +239,7 @@ export async function syncPendingFeedbacks() {
 
         await saveFeedback(item.sessionId, item.rating);
       }
-    } catch (error) {
+    } catch {
       remaining.push(item);
     }
   }

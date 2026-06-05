@@ -1,5 +1,6 @@
+import { useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { getToken } from "./services/api";
+import { getToken, syncPendingFeedbacks } from "./services/api";
 
 import Login from "./pages/Login";
 import Register from "./pages/Register";
@@ -11,6 +12,18 @@ import Stats from "./pages/Stats";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 function App() {
+  useEffect(() => {
+    syncPendingFeedbacks().catch(console.error);
+
+    const handleOnline = () => {
+      syncPendingFeedbacks().catch(console.error);
+    };
+
+    window.addEventListener("online", handleOnline);
+
+    return () => window.removeEventListener("online", handleOnline);
+  }, []);
+
   return (
     <BrowserRouter>
       <Routes>
