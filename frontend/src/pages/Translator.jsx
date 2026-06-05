@@ -31,23 +31,45 @@ const lastPredictionRef = useRef({
 const isPredictingRef = useRef(false);
 const lastRequestTimeRef = useRef(0);
 
- const handleLandmarksDetected = useCallback(
+const stableSignRef = useRef({
+  label: null,
+  count: 0,
+});
+
+const lastWrittenRef = useRef({
+  label: null,
+  time: 0,
+});
+
+const formatDetectedText = (label) => {
+  const cleanLabel = label.trim();
+
+  // Si es palabra o frase, agrega espacios.
+  if (cleanLabel.length > 1) {
+    return ` ${cleanLabel} `;
+  }
+
+  // Si es una letra, la agrega normal.
+  return cleanLabel;
+};
+
+const handleLandmarksDetected = useCallback(
   async (landmarks) => {
     if (!landmarks || landmarks.length < 21) {
       setCurrentSign("Sin seña");
       return;
     }
 
-    setCurrentSign("Mano detectada");
-
     if (!isRunning) {
+      setCurrentSign("Mano detectada");
       return;
     }
 
     const now = Date.now();
 
-    // Evita mandar 30-60 requests por segundo al backend
-    if (isPredictingRef.current || now - lastRequestTimeRef.current < 600) {
+    // No mandar demasiadas solicitudes al backend.
+    // Antes estaba muy rápido. Esto baja la carga y reduce lag.
+    if (isPredictingRef.current || now - lastRequestTimeRef.current < 1200) {
       return;
     }
 
@@ -62,48 +84,72 @@ const lastRequestTimeRef = useRef(0);
         return;
       }
 
+      const label = prediction.label.trim();
       const confidence = prediction.confidence ?? 0;
 
-      setCurrentSign(
-        `${prediction.label} · ${Math.round(confidence * 100)}%`
-      );
+      setCurrentSign(`${label} · ${Math.round(confidence * 100)}%`);
 
-      if (confidence < 0.65) {
+      // Baja o sube este valor según qué tan estricto quieras el modelo.
+      if (confidence < 0.30) {
         return;
       }
 
-      const lastPrediction = lastPredictionRef.current;
+      // La seña debe repetirse varias veces antes de escribirse.
+      if (stableSignRef.current.label === label) {
+        stableSignRef.current.count += 1;
+      } else {
+        stableSignRef.current = {
+          label,
+          count: 1,
+        };
+      }
 
+      // Necesita 2 predicciones iguales seguidas para aceptarla.
+      // Si quieres más seguridad, cambia 2 por 3.
+      if (stableSignRef.current.count < 3) {
+        return;
+      }
+
+      const lastWritten = lastWrittenRef.current;
+
+      // Evita repetir la misma seña durante 3 segundos.
       if (
-        lastPrediction.label === prediction.label &&
-        now - lastPrediction.time < 1500
+        lastWritten.label === label &&
+        now - lastWritten.time < 2000
       ) {
         return;
       }
 
-      lastPredictionRef.current = {
-        label: prediction.label,
+      lastWrittenRef.current = {
+        label,
         time: now,
       };
 
-      setTextBuffer((prev) => prev + prediction.label);
+      const textToAdd = formatDetectedText(label);
+
+      setTextBuffer((prev) => {
+        const newText = prev + textToAdd;
+
+        // Evita que la pantalla se llene infinito.
+        if (newText.length > 120) {
+          return newText.slice(-120);
+        }
+
+        return newText;
+      });
+
       setTranslationsCount((prev) => prev + 1);
 
       if (session?.id) {
         try {
-          await saveTranslation(
-            session.id,
-            prediction.label,
-            confidence
-          );
-
-          setMessage(`Se detectó y guardó: ${prediction.label}`);
+          await saveTranslation(session.id, label, confidence);
+          setMessage(`Se detectó y guardó: ${label}`);
         } catch (error) {
           console.error(error);
-          setMessage(`Se detectó: ${prediction.label}, pero no se guardó`);
+          setMessage(`Se detectó: ${label}, pero no se guardó`);
         }
       } else {
-        setMessage(`Se detectó en modo demo: ${prediction.label}`);
+        setMessage(`Se detectó en modo demo: ${label}`);
       }
     } catch (error) {
       console.error("Error usando modelo IA:", error);
