@@ -1,12 +1,14 @@
 import { useCallback, useRef, useState } from "react";
 import HandCamera from "../components/HandCamera";
-import { classifyHandLandmarks } from "../utils/signClassifier";
+// import { classifyHandLandmarks } from "../utils/signClassifier";
+
 import {
   createSession,
   saveTranslation,
   saveFeedback,
   updateSession,
   savePendingFeedbackLocally,
+  predictSign,
 } from "../services/api";
 
 function Translator() {
@@ -21,29 +23,55 @@ function Translator() {
   const [translationsCount, setTranslationsCount] = useState(0);
   const [finalSessionData, setFinalSessionData] = useState(null);
 
-  const lastPredictionRef = useRef({
-    label: null,
-    time: 0,
-  });
+const lastPredictionRef = useRef({
+  label: null,
+  time: 0,
+});
 
-  const handleLandmarksDetected = useCallback(
-    async (landmarks) => {
-      const prediction = classifyHandLandmarks(landmarks);
+const isPredictingRef = useRef(false);
+const lastRequestTimeRef = useRef(0);
 
-      if (!prediction) {
-        setCurrentSign("Mano detectada");
+ const handleLandmarksDetected = useCallback(
+  async (landmarks) => {
+    if (!landmarks || landmarks.length < 21) {
+      setCurrentSign("Sin seña");
+      return;
+    }
+
+    setCurrentSign("Mano detectada");
+
+    if (!isRunning) {
+      return;
+    }
+
+    const now = Date.now();
+
+    // Evita mandar 30-60 requests por segundo al backend
+    if (isPredictingRef.current || now - lastRequestTimeRef.current < 600) {
+      return;
+    }
+
+    isPredictingRef.current = true;
+    lastRequestTimeRef.current = now;
+
+    try {
+      const prediction = await predictSign(landmarks);
+
+      if (!prediction || !prediction.label) {
+        setCurrentSign("Sin clasificar");
         return;
       }
+
+      const confidence = prediction.confidence ?? 0;
 
       setCurrentSign(
-        `${prediction.label} · ${Math.round(prediction.confidence * 100)}%`
+        `${prediction.label} · ${Math.round(confidence * 100)}%`
       );
 
-      if (prediction.confidence < 0.85) {
+      if (confidence < 0.65) {
         return;
       }
 
-      const now = Date.now();
       const lastPrediction = lastPredictionRef.current;
 
       if (
@@ -58,10 +86,6 @@ function Translator() {
         time: now,
       };
 
-      if (!isRunning) {
-        return;
-      }
-
       setTextBuffer((prev) => prev + prediction.label);
       setTranslationsCount((prev) => prev + 1);
 
@@ -70,8 +94,9 @@ function Translator() {
           await saveTranslation(
             session.id,
             prediction.label,
-            prediction.confidence
+            confidence
           );
+
           setMessage(`Se detectó y guardó: ${prediction.label}`);
         } catch (error) {
           console.error(error);
@@ -80,9 +105,16 @@ function Translator() {
       } else {
         setMessage(`Se detectó en modo demo: ${prediction.label}`);
       }
-    },
-    [isRunning, session]
-  );
+    } catch (error) {
+      console.error("Error usando modelo IA:", error);
+      setCurrentSign("Error en modelo IA");
+      setMessage(error.message);
+    } finally {
+      isPredictingRef.current = false;
+    }
+  },
+  [isRunning, session]
+);
 
   const startConversation = async () => {
     if (session && isRunning) {

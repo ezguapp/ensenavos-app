@@ -237,3 +237,27 @@ export async function syncPendingFeedbacks() {
 
   localStorage.setItem("pendingFeedbacks", JSON.stringify(remaining));
 }
+
+export async function predictSign(landmarks) {
+  const flatLandmarks = landmarks.flatMap((point) => [
+    point.x,
+    point.y,
+    point.z,
+  ]);
+
+  const response = await fetch(`${API_URL}/predict/`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify({
+      landmarks: flatLandmarks,
+    }),
+  });
+
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(data?.error || "Error al predecir la seña");
+  }
+
+  return data;
+}
