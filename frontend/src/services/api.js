@@ -26,7 +26,10 @@ export async function registerUser(username, email, password) {
     }),
   });
 
-  const data = await response.json();
+  const contentType = response.headers.get("content-type") || "";
+  const data = contentType.includes("application/json")
+    ? await response.json()
+    : { detail: `Error del servidor (${response.status})` };
 
   if (!response.ok) {
     const errorMessage =
@@ -56,7 +59,10 @@ export async function loginUser(username, password) {
     }),
   });
 
-  const data = await response.json();
+  const contentType = response.headers.get("content-type") || "";
+  const data = contentType.includes("application/json")
+    ? await response.json()
+    : { detail: `Error del servidor (${response.status})` };
 
   if (!response.ok) {
     throw new Error(data.error || "Credenciales incorrectas");

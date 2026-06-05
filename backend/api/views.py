@@ -124,3 +124,52 @@ def stats(request):
         "total_feedbacks": total_feedbacks,
         "average_rating": round(average_rating, 2)
     })
+
+
+# ─────────────────────────────────────────────
+#  NUEVO ENDPOINT: Clasificación de señas con ML
+# ─────────────────────────────────────────────
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def predict_sign(request):
+    """
+    Recibe 63 coordenadas de landmarks y devuelve la seña predicha.
+
+    Body JSON:
+        { "landmarks": [x0, y0, z0, x1, y1, z1, ..., x20, y20, z20] }
+
+    Respuesta:
+        { "label": "A", "confidence": 0.97 }
+    """
+    from .ml_predictor import predict_landmarks
+
+    landmarks = request.data.get("landmarks")
+
+    if not landmarks or not isinstance(landmarks, list):
+        return Response(
+            {"error": "Se esperan los landmarks como lista en el campo 'landmarks'"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if len(landmarks) != 63:
+        return Response(
+            {"error": f"Se esperan 63 valores (21 puntos × 3), se recibieron {len(landmarks)}"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        result = predict_landmarks(landmarks)
+        return Response(result)
+
+    except FileNotFoundError as e:
+        return Response(
+            {"error": str(e)},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
+    except Exception as e:
+        return Response(
+            {"error": f"Error en predicción: {str(e)}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
