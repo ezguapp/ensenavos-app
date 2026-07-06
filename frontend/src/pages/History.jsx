@@ -1,11 +1,9 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { getSessions } from "../services/api";
+import AppBottomNav from "../components/AppBottomNav";
 import "../App.css";
 
 function History() {
-  const navigate = useNavigate();
-
   const [sessions, setSessions] = useState([]);
   const [message, setMessage] = useState("Cargando historial...");
 
@@ -52,9 +50,7 @@ function History() {
           ))}
         </section>
 
-        <section className="menu-options">
-          <button onClick={() => navigate("/menu")}>Volver al menú</button>
-        </section>
+        <AppBottomNav />
       </section>
     </main>
   );

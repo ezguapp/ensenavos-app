@@ -22,6 +22,16 @@ async function readJsonResponse(response, fallbackMessage) {
   return data;
 }
 
+function getApiError(data, fallbackMessage) {
+  if (typeof data?.detail === "string") return data.detail;
+  if (typeof data?.error === "string") return data.error;
+  if (Array.isArray(data?.detail) && data.detail[0]?.msg) {
+    return data.detail[0].msg;
+  }
+
+  return fallbackMessage;
+}
+
 export async function registerUser(username, email, password) {
   const response = await fetch(`${API_URL}/auth/register/`, {
     method: "POST",
@@ -41,13 +51,7 @@ export async function registerUser(username, email, password) {
   );
 
   if (!response.ok) {
-    const errorMessage =
-      data.username?.[0] ||
-      data.email?.[0] ||
-      data.password?.[0] ||
-      "Error al registrar usuario";
-
-    throw new Error(errorMessage);
+    throw new Error(getApiError(data, "Error al registrar usuario"));
   }
 
   localStorage.setItem("token", data.token);
@@ -74,7 +78,7 @@ export async function loginUser(username, password) {
   );
 
   if (!response.ok) {
-    throw new Error(data.error || "Credenciales incorrectas");
+    throw new Error(getApiError(data, "Credenciales incorrectas"));
   }
 
   localStorage.setItem("token", data.token);
@@ -106,7 +110,7 @@ export async function createSession() {
   const data = await response.json().catch(() => null);
 
   if (!response.ok) {
-    throw new Error(data?.detail || `Error al crear la sesión (${response.status})`);
+    throw new Error(getApiError(data, `Error al crear la sesion (${response.status})`));
   }
 
   return data;
@@ -123,11 +127,13 @@ export async function saveTranslation(sessionId, text, confidence = 1) {
     }),
   });
 
+  const data = await response.json().catch(() => null);
+
   if (!response.ok) {
-    throw new Error("Error al guardar la traducción");
+    throw new Error(getApiError(data, "Error al guardar la traduccion"));
   }
 
-  return await response.json();
+  return data;
 }
 
 export async function saveFeedback(sessionId, rating) {
@@ -140,11 +146,13 @@ export async function saveFeedback(sessionId, rating) {
     }),
   });
 
+  const data = await response.json().catch(() => null);
+
   if (!response.ok) {
-    throw new Error("Error al guardar el feedback");
+    throw new Error(getApiError(data, "Error al guardar el feedback"));
   }
 
-  return await response.json();
+  return data;
 }
 
 export async function getSessions() {
@@ -152,11 +160,13 @@ export async function getSessions() {
     headers: getAuthHeaders(),
   });
 
+  const data = await response.json().catch(() => null);
+
   if (!response.ok) {
-    throw new Error("Error al obtener historial");
+    throw new Error(getApiError(data, "Error al obtener historial"));
   }
 
-  return await response.json();
+  return data;
 }
 
 export async function getTranslations() {
@@ -164,11 +174,13 @@ export async function getTranslations() {
     headers: getAuthHeaders(),
   });
 
+  const data = await response.json().catch(() => null);
+
   if (!response.ok) {
-    throw new Error("Error al obtener traducciones");
+    throw new Error(getApiError(data, "Error al obtener traducciones"));
   }
 
-  return await response.json();
+  return data;
 }
 
 export async function getFeedback() {
@@ -176,11 +188,13 @@ export async function getFeedback() {
     headers: getAuthHeaders(),
   });
 
+  const data = await response.json().catch(() => null);
+
   if (!response.ok) {
-    throw new Error("Error al obtener feedback");
+    throw new Error(getApiError(data, "Error al obtener feedback"));
   }
 
-  return await response.json();
+  return data;
 }
 
 export async function getStats() {
@@ -188,11 +202,13 @@ export async function getStats() {
     headers: getAuthHeaders(),
   });
 
+  const data = await response.json().catch(() => null);
+
   if (!response.ok) {
-    throw new Error("Error al obtener estadísticas");
+    throw new Error(getApiError(data, "Error al obtener estadisticas"));
   }
 
-  return await response.json();
+  return data;
 }
 
 export async function updateSession(sessionId, data) {
@@ -202,11 +218,13 @@ export async function updateSession(sessionId, data) {
     body: JSON.stringify(data),
   });
 
+  const responseData = await response.json().catch(() => null);
+
   if (!response.ok) {
-    throw new Error("Error al actualizar la sesión");
+    throw new Error(getApiError(responseData, "Error al actualizar la sesion"));
   }
 
-  return await response.json();
+  return responseData;
 }
 
 export function savePendingFeedbackLocally(feedbackData) {
@@ -265,7 +283,7 @@ export async function predictSign(landmarks) {
   const data = await response.json().catch(() => null);
 
   if (!response.ok) {
-    throw new Error(data?.error || "Error al predecir la seña");
+    throw new Error(getApiError(data, "Error al predecir la sena"));
   }
 
   return data;

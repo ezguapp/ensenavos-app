@@ -8,6 +8,7 @@ import Menu from "./pages/Menu";
 import Translator from "./pages/Translator";
 import History from "./pages/History";
 import Stats from "./pages/Stats";
+import Tutorial from "./pages/Tutorial";
 
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -67,6 +68,15 @@ function App() {
           element={
             <ProtectedRoute>
               <Stats />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/tutorial"
+          element={
+            <ProtectedRoute>
+              <Tutorial />
             </ProtectedRoute>
           }
         />

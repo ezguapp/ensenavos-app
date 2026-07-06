@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import HandCamera from "../components/HandCamera";
+import AppBottomNav from "../components/AppBottomNav";
 
 import {
   createSession,
@@ -413,8 +414,8 @@ function Translator() {
   };
 
   return (
-    <main style={styles.page}>
-      <section style={styles.phone}>
+    <main className="translator-page" style={styles.page}>
+      <section className="translator-shell" style={styles.phone}>
         <header style={styles.header}>
           <div>
             <p style={styles.eyebrow}>EnseñaVos</p>
@@ -479,6 +480,8 @@ function Translator() {
         </section>
 
         {message && <p style={styles.message}>{message}</p>}
+
+        <AppBottomNav />
 
         {showFeedback && (
           <section style={styles.modalBackdrop}>
@@ -574,7 +577,8 @@ const styles = {
     minHeight: "760px",
     maxHeight: "92vh",
     position: "relative",
-    overflow: "hidden",
+    overflowX: "hidden",
+    overflowY: "auto",
     borderRadius: "38px",
     padding: "20px",
     background:

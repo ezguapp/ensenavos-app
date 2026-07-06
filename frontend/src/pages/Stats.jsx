@@ -1,11 +1,9 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { getStats } from "../services/api";
+import AppBottomNav from "../components/AppBottomNav";
 import "../App.css";
 
 function Stats() {
-  const navigate = useNavigate();
-
   const [stats, setStats] = useState(null);
   const [message, setMessage] = useState("Cargando estadísticas...");
 
@@ -58,9 +56,7 @@ function Stats() {
           </section>
         )}
 
-        <section className="menu-options">
-          <button onClick={() => navigate("/menu")}>Volver al menú</button>
-        </section>
+        <AppBottomNav />
       </section>
     </main>
   );

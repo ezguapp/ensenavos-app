@@ -1,10 +1,75 @@
 import { useNavigate } from "react-router-dom";
 import { getLocalUser, logoutUser } from "../services/api";
+import AppBottomNav from "../components/AppBottomNav";
 import "../App.css";
+
+function Icon({ name }) {
+  const paths = {
+    camera: (
+      <>
+        <path d="M14.5 5 13 3H7L5.5 5H3a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-6.5Z" />
+        <circle cx="10" cy="11" r="4" />
+      </>
+    ),
+    practice: (
+      <>
+        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z" />
+      </>
+    ),
+    history: (
+      <>
+        <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+        <path d="M3 3v5h5M12 7v5l3 2" />
+      </>
+    ),
+    stats: (
+      <>
+        <path d="M4 20V10M10 20V4M16 20v-7M22 20V7" />
+        <path d="M2 20h22" />
+      </>
+    ),
+    arrow: <path d="m9 18 6-6-6-6" />,
+    logout: (
+      <>
+        <path d="M10 17l5-5-5-5M15 12H3" />
+        <path d="M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5" />
+      </>
+    ),
+  };
+
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none">
+      {paths[name]}
+    </svg>
+  );
+}
+
+const secondaryActions = [
+  {
+    icon: "practice",
+    title: "Practicar",
+    description: "Aprende las señas paso a paso",
+    route: "/tutorial",
+  },
+  {
+    icon: "history",
+    title: "Historial",
+    description: "Revisa tus traducciones guardadas",
+    route: "/history",
+  },
+  {
+    icon: "stats",
+    title: "Estadísticas",
+    description: "Consulta tu actividad y progreso",
+    route: "/stats",
+  },
+];
 
 function Menu() {
   const navigate = useNavigate();
   const user = getLocalUser();
+  const username = user?.username || "Usuario";
 
   const handleLogout = () => {
     logoutUser();
@@ -12,111 +77,63 @@ function Menu() {
   };
 
   return (
-    <main className="retro-menu-page">
-      <section className="retro-phone">
-        <header className="retro-topbar">
-          <div className="retro-brand">
-            <div className="retro-camera-mark">
-              <span className="camera-lens"></span>
-              <span className="camera-flash"></span>
-            </div>
-
-            <div>
-              <p>EnseñaVos</p>
-              <h1>Inicio</h1>
-            </div>
+    <main className="simple-menu-page">
+      <section className="simple-menu-shell">
+        <header className="simple-menu-header">
+          <div className="simple-brand" aria-label="EnseñaVos">
+            <span className="simple-brand-mark" aria-hidden="true">E</span>
+            <span>EnseñaVos</span>
           </div>
-
-          <button className="retro-profile" onClick={handleLogout}>
-            {user?.username?.charAt(0)?.toUpperCase() || "U"}
-          </button>
+          <div className="simple-avatar" aria-label={`Perfil de ${username}`}>
+            {username.charAt(0).toUpperCase()}
+          </div>
         </header>
 
-        <section className="retro-welcome-card">
-          <p className="retro-small-label">Bienvenido</p>
-          <h2>{user?.username || "Usuario"}</h2>
-          <p>
-            Traduce señas en tiempo real usando la cámara del celular y
-            reconocimiento de mano con MediaPipe.
-          </p>
+        <section className="simple-welcome">
+          <p>Hola, {username}</p>
+          <h1>¿Qué quieres hacer?</h1>
         </section>
 
-        <section className="retro-main-action">
-          <button
-            className="translate-big-button"
-            onClick={() => navigate("/translator")}
-          >
-            <div className="translate-icon-wrap">
-              <span className="translate-hand">✋</span>
-            </div>
+        <button
+          className="simple-main-action"
+          onClick={() => navigate("/translator")}
+        >
+          <span className="simple-action-copy">
+            <small className="simple-main-label">TRADUCTOR EN VIVO</small>
+            <strong>Traducir con la cámara</strong>
+            <small>Reconoce señas en tiempo real</small>
+          </span>
+          <span className="simple-hand-visual" aria-hidden="true">🤟</span>
+        </button>
 
-            <div className="translate-text">
-              <span>Comenzar</span>
-              <h2>Traducir ahora</h2>
-              <p>Reconocimiento en vivo</p>
-            </div>
-
-            <span className="translate-arrow">›</span>
-          </button>
-        </section>
-
-        <section className="retro-cards-grid">
-          <button
-            className="retro-mini-card"
-            onClick={() => navigate("/history")}
-          >
-            <div className="retro-mini-icon blue">⌚</div>
-            <h3>Historial</h3>
-            <p>Revisa tus sesiones guardadas.</p>
-          </button>
-
-          <button
-            className="retro-mini-card"
-            onClick={() => navigate("/stats")}
-          >
-            <div className="retro-mini-icon peach">📊</div>
-            <h3>Estadísticas</h3>
-            <p>Uso, traducciones y feedback.</p>
-          </button>
-        </section>
-
-        <section className="retro-system-card">
-          <div className="retro-status-row">
-            <span className="retro-status-dot green"></span>
-            <div>
-              <h4>MediaPipe Hands</h4>
-              <p>Detección de mano disponible</p>
-            </div>
-          </div>
-
-          <div className="retro-status-row">
-            <span className="retro-status-dot amber"></span>
-            <div>
-              <h4>Base de datos</h4>
-              <p>Sesiones y feedback guardados en Django</p>
-            </div>
+        <section className="simple-options" aria-labelledby="options-title">
+          <h2 id="options-title">Más opciones</h2>
+          <div className="simple-option-list">
+            {secondaryActions.map((action) => (
+              <button
+                key={action.route}
+                className="simple-option"
+                onClick={() => navigate(action.route)}
+              >
+                <span className="simple-option-icon"><Icon name={action.icon} /></span>
+                <span className="simple-action-copy">
+                  <strong>{action.title}</strong>
+                  <small>{action.description}</small>
+                </span>
+                <span className="simple-arrow"><Icon name="arrow" /></span>
+              </button>
+            ))}
           </div>
         </section>
 
-        <footer className="retro-bottom-nav">
-          <button className="retro-nav-item active">
-            <span>⌂</span>
-            Inicio
-          </button>
-
-          <button
-            className="retro-nav-item"
-            onClick={() => navigate("/translator")}
-          >
-            <span>✋</span>
-            Traducir
-          </button>
-
-          <button className="retro-nav-item" onClick={() => navigate("/stats")}>
-            <span>◌</span>
-            Datos
+        <footer className="simple-menu-footer">
+          <p><span aria-hidden="true"></span> Servicios disponibles</p>
+          <button onClick={handleLogout}>
+            <Icon name="logout" />
+            Cerrar sesión
           </button>
         </footer>
+        <AppBottomNav />
       </section>
     </main>
   );
